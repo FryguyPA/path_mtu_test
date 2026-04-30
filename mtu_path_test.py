@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
 MTU Path Tester
+===============
+
+Project : path_mtu_test
+Author  : Jeff Fry <jeff@fryguy.net>
+Repo    : https://github.com/FryguyPA/path_mtu_test
+License : MIT (see LICENSE)
+Version : 0.5.0
+Date    : 2026-04-30
 
 Runs a traceroute to a target, then for each hop sweeps packet sizes with a
 DUAL probe per size:
@@ -35,6 +43,10 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime
+
+__version__ = "0.5.0"
+__author__ = "Jeff Fry <jeff@fryguy.net>"
+__repo__ = "https://github.com/FryguyPA/path_mtu_test"
 
 # IPv4 (20) + ICMP (8) overhead. ping -s sets the data payload only.
 ICMP_OVERHEAD = 28
@@ -577,7 +589,12 @@ def render_multi_summary(results: list[tuple[str, list[Hop]]]) -> None:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Traceroute + per-hop MTU sweep")
+    p = argparse.ArgumentParser(
+        description=f"Traceroute + per-hop MTU sweep (v{__version__})",
+        epilog=f"Author: {__author__}  ·  Repo: {__repo__}",
+    )
+    p.add_argument("--version", action="version",
+                   version=f"mtu_path_test.py {__version__}")
     p.add_argument("targets", nargs="*",
                    help="One or more destination IPs/hostnames")
     p.add_argument("--file", "-f", help="File with one target per line "

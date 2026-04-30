@@ -1,16 +1,29 @@
 #!/usr/bin/env bash
-# mtu_path_test.sh — dual-probe MTU path tester
+# ============================================================================
+#  mtu_path_test.sh — dual-probe MTU path tester
 #
-# Per hop, per packet size, sends:
-#   1. ping -D (DF set) — finds the no-frag ceiling and parses any returned
-#      ICMP "Fragmentation Needed" message for the offending router IP + MTU
-#   2. ping     (DF clear) — confirms the path actually delivers the size
-#      with fragmentation allowed
+#  Project : path_mtu_test
+#  Author  : Jeff Fry <jeff@fryguy.net>
+#  Repo    : https://github.com/FryguyPA/path_mtu_test
+#  License : MIT (see LICENSE)
+#  Version : 0.5.0
+#  Date    : 2026-04-30
 #
-# Targeted at macOS (uses macOS-style ping -W milliseconds). Works on Linux
-# iputils too if you adjust --timeout-ms units.
+#  Per hop, per packet size, sends:
+#    1. ping -D / -M do (DF set) — finds the no-frag ceiling and parses any
+#       returned ICMP "Fragmentation Needed" message for the offending router
+#       IP + link MTU.
+#    2. ping (DF clear)          — confirms the path actually delivers the
+#       size when fragmentation is allowed.
+#
+#  Auto-detects macOS vs Linux for the right DF flag and -W units.
+# ============================================================================
 
 set -u
+
+VERSION="0.5.0"
+AUTHOR="Jeff Fry <jeff@fryguy.net>"
+REPO="https://github.com/FryguyPA/path_mtu_test"
 
 # ---- defaults ----
 START=1300
@@ -33,7 +46,10 @@ RUN_TS=""           # set at startup once per run
 SAVED_FILES=()
 
 usage() {
-  cat <<'EOF'
+  cat <<EOF
+mtu_path_test.sh ${VERSION}  —  ${AUTHOR}
+${REPO}
+
 Usage: mtu_path_test.sh [options] target [target ...]
 
 Per-hop dual-probe (DF + non-DF) MTU path test.
@@ -53,6 +69,7 @@ Options:
       --out-dir DIR      Directory for saved logs   (default: cwd)
       --out-ext EXT      Extension for saved logs   (default: log)
   -h, --help             Show this help
+  -V, --version          Print version and exit
 
 By default each target's output is saved to a file named:
   <DST>_<YYYYMMDD>_<HHMMSS>.<ext>      (ANSI colors stripped)
@@ -69,6 +86,7 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)    usage; exit 0 ;;
+    -V|--version) printf 'mtu_path_test.sh %s\n' "$VERSION"; exit 0 ;;
     --start)      START="$2"; shift 2 ;;
     --end)        END="$2"; shift 2 ;;
     --step)       STEP="$2"; shift 2 ;;
