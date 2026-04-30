@@ -14,20 +14,28 @@ Useful for spotting silent jumbo-frame breakage, identifying which hop
 fragments traffic, and verifying that fragmented delivery still works
 end-to-end.
 
-Two implementations ship together — pick whichever fits the host:
+Three implementations ship together — pick whichever fits the host:
 
-- `mtu_path_test.py` — Python 3.9+, primary implementation.
+- `mtu_path_test.py` — Python 3.9+, primary implementation. Runs anywhere
+  Python 3 + traceroute + ping are available.
 - `mtu_path_test.sh` — pure bash. Same flags, same output, no Python
   dependency. Drop it on any macOS or Linux box and go.
+- `mtu_path_test.ps1` — PowerShell (5.1+ on Windows 10/11/Server, or
+  PowerShell 7+). Same probing semantics adapted to `ping.exe` /
+  `tracert.exe`. Use this on a Windows box without WSL.
 
 ## Requirements
 
-- macOS or Linux (both implementations auto-detect and adapt to iputils on
-  Linux).
-- `traceroute` and `ping` on `PATH` (both ship with macOS; on minimal Ubuntu
-  install with `apt install traceroute iputils-ping`).
-- Python 3.9+ if you want the `.py` version; the `.sh` version has no
-  language dependency beyond bash 3.2+.
+| Implementation | OS | Tools | Language runtime |
+| --- | --- | --- | --- |
+| `mtu_path_test.py` | macOS, Linux | `traceroute`, `ping` | Python 3.9+ |
+| `mtu_path_test.sh` | macOS, Linux | `traceroute`, `ping` | bash 3.2+ |
+| `mtu_path_test.ps1` | Windows 10/11/Server | `tracert.exe`, `ping.exe` (built-in) | PowerShell 5.1+ |
+
+The bash and Python implementations auto-detect macOS vs Linux and adapt
+to iputils on the latter (`ping -M do`, `-W` in seconds, etc.). On a fresh
+minimal Ubuntu install: `apt install traceroute iputils-ping`. Windows
+ships with both `ping.exe` and `tracert.exe`.
 
 No third-party packages.
 
@@ -47,6 +55,18 @@ python3 mtu_path_test.py 8.8.8.8
 # mix CLI + file, change coarse step, custom save dir
 ./mtu_path_test.sh 192.0.2.10 --file sites.txt --step 250 --out-dir ~/mtu-runs
 ```
+
+```powershell
+# Windows / PowerShell (5.1 built-in or 7+)
+.\mtu_path_test.ps1 8.8.8.8
+.\mtu_path_test.ps1 8.8.8.8 1.1.1.1 www.example.com
+.\mtu_path_test.ps1 -File targets.txt -Start 1300 -End 9000
+.\mtu_path_test.ps1 -Iface "Ethernet" 8.8.8.8       # bind to a NIC by alias
+```
+
+> The PowerShell flag style is `-PascalCase` (e.g. `-Start`, `-FineStep`,
+> `-OutDir`) instead of `--kebab-case`. All other semantics match the bash
+> and Python versions.
 
 `targets.txt` is one host per line. Blank lines and `#` comments are ignored;
 trailing inline comments are stripped (`1.1.1.1   # cloudflare`).
@@ -176,6 +196,31 @@ point line when one was identified.
 
 When more than one target is tested, a final summary table compares them.
 
+## Notes for the PowerShell version
+
+- **The `.ps1` file must keep its UTF-8 BOM** to render the Unicode bars
+  (`█`, `░`, `═`, `│`, `▼`, `●`, `◆`) on Windows PowerShell 5.1. Without
+  the BOM, 5.1 reads the file as Windows-1252 and the parser fails on
+  the multi-byte sequences. PowerShell 7+ defaults to UTF-8 and works
+  either way. `git pull` / `git clone` preserves the BOM; pasting the
+  file contents through some Windows editors (notably old Notepad) does
+  not. If you ever see parse errors that mention things like `'â–ˆ'`,
+  the BOM was stripped — add it back via:
+  ```powershell
+  $b = [System.IO.File]::ReadAllBytes('.\mtu_path_test.ps1')
+  if ($b[0] -ne 0xEF) {
+    [System.IO.File]::WriteAllBytes('.\mtu_path_test.ps1', @(0xEF,0xBB,0xBF) + $b)
+  }
+  ```
+- The script is a `.ps1` file, so PowerShell execution policy applies.
+  If `.\mtu_path_test.ps1` errors with "running scripts is disabled"
+  use `Set-ExecutionPolicy -Scope Process Bypass` for the current
+  session.
+- `tracert.exe` doesn't accept a NIC alias. The script translates
+  `-Iface "Ethernet"` to the alias's primary IPv4 address via
+  `Get-NetIPAddress` and passes that via `-S` to both `ping.exe` and
+  `tracert.exe`.
+
 ## Notes & caveats
 
 - Some routers rate-limit or drop ICMP entirely. Such hops appear as
@@ -207,5 +252,8 @@ When more than one target is tested, a final summary table compares them.
   output, Linux+macOS auto-detect.
 - `mtu_path_test.sh` — pure bash equivalent. Same flags, same behavior, no
   Python dependency.
+- `mtu_path_test.ps1` — PowerShell 5.1+ port for Windows. Uses `ping.exe`
+  and `tracert.exe`; same probing semantics, same output layout, same
+  save-to-file behavior. PowerShell-style flags (`-Start`, `-OutDir`, ...).
 - `HOWITWORKS.md` — deeper explanation of the probing logic.
 - `CHANGELOG.md` — change history.

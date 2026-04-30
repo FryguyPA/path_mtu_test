@@ -84,15 +84,21 @@ ping            -c 1 -W <wait> -s <payload> <hop-ip>   # DF clear
 
 ### Platform shims
 
-Both implementations check the OS once at startup (bash: `uname -s`;
-Python: `platform.system()`) and adapt their `ping` calls:
+The Linux/macOS implementations check the OS once at startup (bash:
+`uname -s`; Python: `platform.system()`) and adapt their `ping` calls.
+The PowerShell implementation runs only on Windows and uses the very
+different `ping.exe` / `tracert.exe` flag set:
 
-| Concern | macOS BSD ping | Linux iputils ping |
-| --- | --- | --- |
-| DF bit flag | `-D` | `-M do` |
-| `-W` units | milliseconds | seconds |
-| Bind interface | `-b IFACE` (boundif) | `-I IFACE` |
-| traceroute bind | `-i IFACE` | `-i IFACE` |
+| Concern | macOS BSD ping | Linux iputils ping | Windows ping.exe |
+| --- | --- | --- | --- |
+| DF bit flag | `-D` | `-M do` | `-f` |
+| Packet size flag | `-s <payload>` | `-s <payload>` | `-l <payload>` |
+| Count flag | `-c 1` | `-c 1` | `-n 1` |
+| Wait flag / units | `-W <ms>` | `-W <sec>` | `-w <ms>` |
+| Source-address bind | `-S <addr>` | `-I <addr-or-iface>` | `-S <addr>` |
+| Bind interface (alias) | `-b <iface>` (boundif) | `-I <iface>` | (resolve to addr, then `-S`) |
+| traceroute bind | `-i <iface>` | `-i <iface>` | `-S <addr>` (`tracert.exe`) |
+| traceroute hop cap | `-m N` | `-m N` | `-h N` |
 
 `--timeout-ms` is always specified in milliseconds at the user level; the
 scripts divide by 1000 (rounded up, min 1) before passing it to iputils.
@@ -102,6 +108,39 @@ So `--timeout-ms 1500` always means "1.5 seconds" regardless of platform.
 one for multi-homed hosts (laptop with WiFi+Ethernet, server with
 management+data NICs). Without it the kernel routes per its routing
 table, which may not be the path you actually want to test.
+
+**Windows note:** `ping.exe` doesn't have a "bind to interface" flag, only
+`-S <source-addr>`. The PowerShell script accepts either an IPv4 address
+or a NIC alias (e.g. `"Ethernet"`, `"Wi-Fi"`) for `-Iface` and resolves
+the alias to its primary IPv4 address via `Get-NetIPAddress` before
+passing it to `ping -S`. The same source address is passed to
+`tracert -S` so both phases use the same egress.
+
+**Windows note (2):** Windows `ping.exe` does not embed the next-hop link
+MTU in its "Packet needs to be fragmented but DF set" message the way
+iputils and BSD ping do — newer versions name the offending router (e.g.
+`Reply from 10.0.0.5: Packet needs to be fragmented but DF set.`) but
+the link MTU is usually absent. The PowerShell script reports
+`(link MTU N)` only when present, otherwise just the router IP.
+
+**Windows note (3): file encoding.** `mtu_path_test.ps1` ships with a
+UTF-8 BOM. This is **required** for Windows PowerShell 5.1, which reads
+BOM-less script files as Windows-1252 by default and chokes on the
+multi-byte Unicode characters used in the rendered bars (`█`, `░`,
+`═`, `│`, `▼`). PowerShell 7+ reads UTF-8 by default and works either
+way. Don't strip the BOM if you fork the script — and don't edit it in
+old Notepad which silently drops it. Modern VS Code, PowerShell ISE,
+and Notepad++ all preserve it correctly.
+
+**Windows note (4): automatic-variable name collisions.** PowerShell
+reserves a set of read-only globals (`$Host`, `$Args`, `$Input`,
+`$Error`, `$Matches`, `$_`, `$True`, `$False`, `$Null`, `$PID`,
+`$LASTEXITCODE`, `$Home`, `$PSHome`). Assigning to any of them at
+function scope throws `Cannot overwrite variable X because it is
+read-only or constant.` at runtime — the parser doesn't catch it. The
+script avoids these (uses `$pingArgs`, `$trArgs`, `$hostName`, etc.).
+If you extend the script, run `Invoke-ScriptAnalyzer mtu_path_test.ps1`
+to surface any new collisions before they bite.
 
 Success detection accepts any of `1 packets received` (BSD), `1 received`
 (iputils), or `bytes from` as a positive signal — the wording differs

@@ -137,8 +137,76 @@ if [[ $START -lt 64 || $END -gt 65500 || $START -ge $END \
   echo "Invalid --start/--end/--step/--fine-step combination" >&2; exit 2
 fi
 
-command -v traceroute >/dev/null || { echo "traceroute not on PATH" >&2; exit 2; }
-command -v ping       >/dev/null || { echo "ping not on PATH"       >&2; exit 2; }
+# Print an install hint for a missing required tool, then exit non-zero.
+# Detects the local package manager and emits concrete commands.
+_missing_tool() {
+  local tool="$1"
+  local pkg_apt pkg_dnf pkg_pacman pkg_apk pkg_zypper pkg_brew
+  case "$tool" in
+    traceroute)
+      pkg_apt="traceroute"; pkg_dnf="traceroute"
+      pkg_pacman="traceroute"; pkg_apk="traceroute"
+      pkg_zypper="traceroute"; pkg_brew="traceroute"
+      ;;
+    ping)
+      pkg_apt="iputils-ping"; pkg_dnf="iputils"
+      pkg_pacman="iputils"; pkg_apk="iputils-ping"
+      pkg_zypper="iputils"; pkg_brew="iputils"
+      ;;
+    *)
+      pkg_apt="$tool"; pkg_dnf="$tool"; pkg_pacman="$tool"
+      pkg_apk="$tool"; pkg_zypper="$tool"; pkg_brew="$tool"
+      ;;
+  esac
+
+  printf $'\e[31mError:\e[0m required tool \e[1m`%s`\e[0m was not found on PATH.\n\n' "$tool" >&2
+  printf 'Install it with one of:\n' >&2
+
+  local found_any=0
+  case "$(uname -s)" in
+    Darwin)
+      printf '  # macOS normally has both pre-installed at /usr/sbin/%s.\n' "$tool" >&2
+      printf '  # If it really is missing, try:\n' >&2
+      printf '  brew install %s\n' "$pkg_brew" >&2
+      found_any=1
+      ;;
+    Linux)
+      if command -v apt-get >/dev/null 2>&1; then
+        printf '  sudo apt update && sudo apt install -y %s    # Debian/Ubuntu\n' "$pkg_apt" >&2
+        found_any=1
+      fi
+      if command -v dnf >/dev/null 2>&1; then
+        printf '  sudo dnf install -y %s                       # Fedora / RHEL 8+\n' "$pkg_dnf" >&2
+        found_any=1
+      elif command -v yum >/dev/null 2>&1; then
+        printf '  sudo yum install -y %s                       # RHEL/CentOS 7\n' "$pkg_dnf" >&2
+        found_any=1
+      fi
+      if command -v pacman >/dev/null 2>&1; then
+        printf '  sudo pacman -S --needed %s                   # Arch / Manjaro\n' "$pkg_pacman" >&2
+        found_any=1
+      fi
+      if command -v apk >/dev/null 2>&1; then
+        printf '  sudo apk add %s                              # Alpine\n' "$pkg_apk" >&2
+        found_any=1
+      fi
+      if command -v zypper >/dev/null 2>&1; then
+        printf '  sudo zypper install -y %s                    # openSUSE / SLES\n' "$pkg_zypper" >&2
+        found_any=1
+      fi
+      ;;
+  esac
+
+  if [[ $found_any -eq 0 ]]; then
+    printf '  # No known package manager detected on this system.\n' >&2
+    printf '  # Install %s using whatever your distro provides.\n' "$tool" >&2
+  fi
+  echo >&2
+  exit 2
+}
+
+command -v traceroute >/dev/null || _missing_tool traceroute
+command -v ping       >/dev/null || _missing_tool ping
 
 # ping -W units differ:  macOS BSD = milliseconds, Linux iputils = seconds.
 # Convert TIMEOUT_MS to whatever the local ping wants.

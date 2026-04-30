@@ -7,6 +7,24 @@ YYYY-MM-DD.
 ## [0.6.0] — 2026-04-30
 
 ### Added
+- **PowerShell port** (`mtu_path_test.ps1`). Targets PowerShell 5.1+ on
+  Windows 10/11/Server (works in PowerShell 7+ too). Same dual-probe
+  model, same sweep schedule, same render layout, same save-to-file
+  behavior with ANSI stripping. Differences from the *nix versions:
+  - Uses `ping.exe -f -l <size> -n 1 -w <ms>` and `tracert.exe -d -h <hops>`.
+  - Flag style is PowerShell-native: `-Start`, `-FineStep`, `-OutDir`, etc.
+    (`--kebab-case` would clash with `[CmdletBinding()]`).
+  - `-Iface <name|ip>` resolves a Windows NIC alias to its IPv4 address
+    via `Get-NetIPAddress` and passes that to `ping -S <addr>` and
+    `tracert -S <addr>` (Windows ping has no direct `-I IFACE` flag).
+  - Errors out early on non-Windows hosts with a pointer to the bash /
+    Python versions.
+- **Helpful install hints when `traceroute` or `ping` is missing** (bash).
+  The previous one-line `"… not on PATH"` error has been replaced with a
+  detailed message that detects the local package manager and prints the
+  exact install command. Covered: `apt`/`apt-get` (Debian/Ubuntu),
+  `dnf` (Fedora/RHEL 8+), `yum` (RHEL 7), `pacman` (Arch), `apk`
+  (Alpine), `zypper` (openSUSE), and `brew` (macOS). Exit code stays at 2.
 - **`--iface IFACE` flag** in both implementations. Binds `ping` and
   `traceroute` to a specific interface — essential on multi-homed hosts
   (laptop with WiFi+Ethernet, server with management+data NICs).
@@ -32,6 +50,16 @@ YYYY-MM-DD.
   fragmenting router IP because `[0-9a-fA-F:.]+` was greedy. Made the
   capture non-greedy and require an explicit `:?\s` boundary. Caught by
   the new `tests/test_parsing.py::test_parse_macos_frag_needed`.
+- **PowerShell script encoding** (`mtu_path_test.ps1`). Windows
+  PowerShell 5.1 reads BOM-less files as Windows-1252 by default, so the
+  Unicode block-drawing characters (`█`, `░`, `═`, `│`, `▼`, `●`, `◆`,
+  `→`) parsed as garbage and the script wouldn't load. Added a UTF-8 BOM
+  so both 5.1 and 7+ read it correctly.
+- **PowerShell `$host` collision**. `Invoke-Tracert` used `$host` as a
+  local variable for the per-hop hostname, which collides with PS's
+  read-only automatic `$Host` (the runtime host object). Renamed the
+  local to `$hostName`. Same class of bug as the earlier `$args` rename
+  in `Invoke-PingProbe` / `Invoke-Tracert`.
 
 ## [0.5.0] — 2026-04-30
 
