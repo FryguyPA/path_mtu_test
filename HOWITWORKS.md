@@ -91,10 +91,17 @@ Python: `platform.system()`) and adapt their `ping` calls:
 | --- | --- | --- |
 | DF bit flag | `-D` | `-M do` |
 | `-W` units | milliseconds | seconds |
+| Bind interface | `-b IFACE` (boundif) | `-I IFACE` |
+| traceroute bind | `-i IFACE` | `-i IFACE` |
 
 `--timeout-ms` is always specified in milliseconds at the user level; the
 scripts divide by 1000 (rounded up, min 1) before passing it to iputils.
 So `--timeout-ms 1500` always means "1.5 seconds" regardless of platform.
+
+`--iface` is plumbed through both `ping` and `traceroute`; pick the right
+one for multi-homed hosts (laptop with WiFi+Ethernet, server with
+management+data NICs). Without it the kernel routes per its routing
+table, which may not be the path you actually want to test.
 
 Success detection accepts any of `1 packets received` (BSD), `1 received`
 (iputils), or `bytes from` as a positive signal — the wording differs
@@ -251,6 +258,37 @@ All targets in one invocation share a single timestamp captured at start
 files sort together. Disable with `--no-save`; relocate with `--out-dir`;
 change the extension with `--out-ext`. After all targets finish, both
 scripts print a `Saved logs:` recap listing the files written.
+
+## Testing & CI
+
+The Python implementation has a pytest suite under `tests/` covering all
+the pure helpers — there's no network mocking, just direct unit tests on:
+
+- `_build_sizes()` — sweep-list construction across default, no-fine,
+  only-fine, custom-step, and off-step-end cases.
+- `_FRAG_RE` — both BSD and iputils "Fragmentation Needed" wording, plus
+  negative cases (normal echo reply, timeout output).
+- `bar()`, `_sanitize_target()`, `_ping_w()`, `_AnsiStrippingFile`,
+  `_Tee`, and `load_targets_from_file()`.
+
+Run locally:
+
+```bash
+pip install pytest
+pytest          # 36 cases, ~50 ms
+```
+
+GitHub Actions CI (`.github/workflows/ci.yml`) runs:
+
+- The pytest suite on a Python `{3.9, 3.11, 3.12}` × `{ubuntu-latest,
+  macos-latest}` matrix.
+- `bash -n`, `--help` and `--version` smoke checks, plus ShellCheck
+  (warning level) on the bash script.
+
+The bash script doesn't have a parallel unit-test framework; its
+behavioral parity with Python is verified by hand against the same set
+of cases (the size-builder smoke test in particular has produced
+identical outputs on both sides).
 
 ## What this tool does *not* do
 

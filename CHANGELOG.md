@@ -4,6 +4,35 @@ All notable changes to this project. Format roughly follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); dates are
 YYYY-MM-DD.
 
+## [0.6.0] — 2026-04-30
+
+### Added
+- **`--iface IFACE` flag** in both implementations. Binds `ping` and
+  `traceroute` to a specific interface — essential on multi-homed hosts
+  (laptop with WiFi+Ethernet, server with management+data NICs).
+  Platform-aware: Linux iputils ping uses `-I IFACE`, macOS BSD ping uses
+  `-b IFACE` (boundif). `traceroute -i IFACE` on both.
+- **Test suite** under `tests/` (pytest). 36 tests covering:
+  - `_build_sizes()` sweep-list construction (9 cases including default,
+    no fine zone, only fine zone, custom fine step, off-step end).
+  - `_FRAG_RE` parsing for both BSD and iputils ping wording, plus
+    negative cases (normal reply, timeout).
+  - `bar()`, `_sanitize_target()`, `_ping_w()`, `_AnsiStrippingFile`,
+    `_Tee`, and `load_targets_from_file()`.
+- **`pyproject.toml`** with pytest configuration (testpaths, pythonpath).
+- **GitHub Actions CI** (`.github/workflows/ci.yml`):
+  - Python matrix: 3.9 / 3.11 / 3.12 on ubuntu-latest + macos-latest.
+    Runs `py_compile` and the full pytest suite on every push and PR.
+  - Bash job on ubuntu-latest: `bash -n`, `--help` and `--version` smoke
+    checks, plus ShellCheck (warning-level).
+
+### Fixed
+- **`_FRAG_RE` over-captured trailing colon** on macOS ping output. The
+  regex previously returned `"10.0.0.5:"` instead of `"10.0.0.5"` for the
+  fragmenting router IP because `[0-9a-fA-F:.]+` was greedy. Made the
+  capture non-greedy and require an explicit `:?\s` boundary. Caught by
+  the new `tests/test_parsing.py::test_parse_macos_frag_needed`.
+
 ## [0.5.0] — 2026-04-30
 
 ### Added

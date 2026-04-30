@@ -6,7 +6,7 @@
 #  Author  : Jeff Fry <jeff@fryguy.net>
 #  Repo    : https://github.com/FryguyPA/path_mtu_test
 #  License : MIT (see LICENSE)
-#  Version : 0.5.0
+#  Version : 0.6.0
 #  Date    : 2026-04-30
 #
 #  Per hop, per packet size, sends:
@@ -21,7 +21,7 @@
 
 set -u
 
-VERSION="0.5.0"
+VERSION="0.6.0"
 AUTHOR="Jeff Fry <jeff@fryguy.net>"
 REPO="https://github.com/FryguyPA/path_mtu_test"
 
@@ -44,6 +44,7 @@ OUT_DIR="."
 OUT_EXT="log"
 RUN_TS=""           # set at startup once per run
 SAVED_FILES=()
+IFACE=""            # optional: bind ping/traceroute to this interface
 
 usage() {
   cat <<EOF
@@ -64,6 +65,8 @@ Options:
       --max-hops N       Traceroute hop cap         (default 30)
       --timeout-ms N     Per-probe wait ms (auto-converted on Linux) (default 1500)
       --retries N        Retries per probe          (default 2)
+      --iface IFACE      Bind ping/traceroute to this interface
+                         (Linux: ping -I, macOS: ping -b; traceroute -i on both)
       --no-color         Disable ANSI colors
       --no-save          Don't save per-target output to a file
       --out-dir DIR      Directory for saved logs   (default: cwd)
@@ -95,6 +98,7 @@ while [[ $# -gt 0 ]]; do
     --max-hops)   MAX_HOPS="$2"; shift 2 ;;
     --timeout-ms) TIMEOUT_MS="$2"; shift 2 ;;
     --retries)    RETRIES="$2"; shift 2 ;;
+    --iface)      IFACE="$2"; shift 2 ;;
     --no-color)   USE_COLOR=0; shift ;;
     --no-save)    SAVE=0; shift ;;
     --out-dir)    OUT_DIR="$2"; shift 2 ;;
@@ -150,6 +154,12 @@ PING_W=$(( (TIMEOUT_MS + PING_W_DIVISOR - 1) / PING_W_DIVISOR ))
 case "$(uname -s)" in
   Linux)  PING_DF_FLAGS=(-M do)  ;;
   *)      PING_DF_FLAGS=(-D)     ;;
+esac
+
+# Linux iputils binds with `-I IFACE`; macOS BSD ping uses `-b IFACE` (boundif).
+case "$(uname -s)" in
+  Linux)  PING_IFACE_FLAG="-I" ;;
+  *)      PING_IFACE_FLAG="-b" ;;
 esac
 
 # Color
@@ -210,7 +220,10 @@ make_bar() {
 # Run traceroute, emit "<num>|<ip>|<hostname>" per line; ip="*" for unreachable
 run_traceroute() {
   local target="$1"
-  traceroute -w 2 -q 1 -m "$MAX_HOPS" "$target" 2>/dev/null | awk '
+  local -a tr_args=(-w 2 -q 1 -m "$MAX_HOPS")
+  [[ -n "$IFACE" ]] && tr_args+=(-i "$IFACE")
+  tr_args+=("$target")
+  traceroute "${tr_args[@]}" 2>/dev/null | awk '
     /^traceroute/ { next }
     {
       n = $1 + 0
@@ -239,11 +252,11 @@ ping_probe() {
   local payload=$((total - ICMP_OVERHEAD))
   if [[ $payload -lt 0 ]]; then echo "FAIL too-small"; return; fi
   local out rc
-  if [[ "$df" == "1" ]]; then
-    out=$(ping "${PING_DF_FLAGS[@]}" -c 1 -W "$PING_W" -s "$payload" "$ip" 2>&1); rc=$?
-  else
-    out=$(ping                       -c 1 -W "$PING_W" -s "$payload" "$ip" 2>&1); rc=$?
-  fi
+  local -a cmd=(ping)
+  [[ "$df" == "1" ]] && cmd+=("${PING_DF_FLAGS[@]}")
+  [[ -n "$IFACE" ]] && cmd+=("$PING_IFACE_FLAG" "$IFACE")
+  cmd+=(-c 1 -W "$PING_W" -s "$payload" "$ip")
+  out=$("${cmd[@]}" 2>&1); rc=$?
   # iputils prints "received" (singular check below covers both "1 received" and
   # macOS "1 packets received"); also accept "bytes from" as a success signal.
   if [[ $rc -eq 0 ]] && \

@@ -94,10 +94,12 @@ Both implementations accept the same flags.
 | `--max-hops`          | 30      | Maximum traceroute hops. |
 | `--timeout-ms`        | 1500    | Per-probe wait time in milliseconds. *(auto-converted to seconds on Linux.)* |
 | `--retries`           | 2       | Retries per size before counting it as a failure. |
+| `--iface IFACE`       | —       | Bind ping/traceroute to a specific interface. *(Linux: `ping -I`, macOS: `ping -b`; `traceroute -i` on both.)* |
 | `--no-color`          | off     | Disable ANSI colors (auto-disabled when piped). |
 | `--no-save`           | save on | Disable per-target file output. |
 | `--out-dir DIR`       | `.`     | Where to write saved logs. |
 | `--out-ext EXT`       | `log`   | File extension for saved logs. |
+| `--version`, `-V`     | —       | Print version and exit. |
 
 `--start` / `--end` / `--fine-pivot` are **total IPv4 packet sizes**, not
 `ping -s` payloads. The scripts subtract the 28-byte IPv4 + ICMP overhead

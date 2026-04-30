@@ -7,7 +7,7 @@ Project : path_mtu_test
 Author  : Jeff Fry <jeff@fryguy.net>
 Repo    : https://github.com/FryguyPA/path_mtu_test
 License : MIT (see LICENSE)
-Version : 0.5.0
+Version : 0.6.0
 Date    : 2026-04-30
 
 Runs a traceroute to a target, then for each hop sweeps packet sizes with a
@@ -44,7 +44,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 __author__ = "Jeff Fry <jeff@fryguy.net>"
 __repo__ = "https://github.com/FryguyPA/path_mtu_test"
 
@@ -57,6 +57,10 @@ ICMP_OVERHEAD = 28
 _IS_LINUX = platform.system() == "Linux"
 _PING_DF_FLAGS = ["-M", "do"] if _IS_LINUX else ["-D"]
 _PING_W_DIVISOR = 1000 if _IS_LINUX else 1   # ms → seconds on Linux
+
+# Linux iputils ping uses `-I IFACE`; macOS BSD ping uses `-b IFACE` (boundif).
+# traceroute on both platforms uses `-i IFACE`.
+_PING_IFACE_FLAG = "-I" if _IS_LINUX else "-b"
 
 # Strip ANSI CSI escapes (used when writing log files).
 _ANSI_RE = re.compile(r"\x1B\[[0-9;]*[A-Za-z]")
@@ -155,8 +159,11 @@ class Hop:
     note: str = ""
 
 
-def run_traceroute(target: str, max_hops: int) -> list[Hop]:
-    cmd = ["traceroute", "-w", "2", "-q", "1", "-m", str(max_hops), target]
+def run_traceroute(target: str, max_hops: int, iface: str = "") -> list[Hop]:
+    cmd = ["traceroute", "-w", "2", "-q", "1", "-m", str(max_hops)]
+    if iface:
+        cmd += ["-i", iface]
+    cmd.append(target)
     print(f"{C.CYAN}Running:{C.RESET} {' '.join(cmd)}")
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=max_hops * 6)
@@ -198,15 +205,18 @@ def run_traceroute(target: str, max_hops: int) -> list[Hop]:
 
 
 # Matches both macOS  ("from 1.2.3.4: frag needed and DF set (MTU 1500)")
-# and Linux iputils  ("From 1.2.3.4 icmp_seq=1 Frag needed and DF set (mtu = 1500)")
+# and Linux iputils  ("From 1.2.3.4 icmp_seq=1 Frag needed and DF set (mtu = 1500)").
+# Non-greedy address capture + optional `:` + required whitespace prevents the
+# trailing colon (macOS format) from being absorbed into the address group.
 _FRAG_RE = re.compile(
-    r"[Ff]rom\s+([0-9a-fA-F:.]+)[^\n]*?[Ff]rag(?:mentation)?\s+needed"
+    r"[Ff]rom\s+([0-9a-fA-F:.]+?):?\s[^\n]*?[Ff]rag(?:mentation)?\s+needed"
     r"[^\n]*?(?:mtu\s*=\s*|MTU\s+|mtu\s+)(\d+)",
     re.IGNORECASE,
 )
 
 
-def ping_probe(ip: str, total_size: int, timeout_ms: int, df: bool) -> dict:
+def ping_probe(ip: str, total_size: int, timeout_ms: int, df: bool,
+               iface: str = "") -> dict:
     """One ICMP echo. Returns:
         ok          — True if the echo reply came back
         frag_router — router IP from "Frag Needed" ICMP error (DF probes only)
@@ -222,6 +232,9 @@ def ping_probe(ip: str, total_size: int, timeout_ms: int, df: bool) -> dict:
         # Insert DF flag(s) right after "ping" so they precede the rest.
         for i, flag in enumerate(_PING_DF_FLAGS):
             cmd.insert(1 + i, flag)
+    if iface:
+        # Insert iface flag pair before the target IP (last element).
+        cmd[-1:-1] = [_PING_IFACE_FLAG, iface]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True,
                               timeout=(timeout_ms / 1000.0) + 2)
@@ -273,7 +286,7 @@ def _build_sizes(start: int, end: int, step: int,
 
 def probe_hop_dual(ip: str, start: int, end: int, step: int, timeout_ms: int,
                    retries: int, fine_step: int = 1, fine_pivot: int = 1500,
-                   prefix: str = "") -> dict:
+                   prefix: str = "", iface: str = "") -> dict:
     """
     Per size, send a DF probe and a non-DF probe. Stop sweeping once both
     fail at the same size (real reachability bottleneck) or once we exhaust
@@ -305,7 +318,7 @@ def probe_hop_dual(ip: str, start: int, end: int, step: int, timeout_ms: int,
     def probe_with_retry(size: int, df: bool):
         last = None
         for _ in range(retries + 1):
-            last = ping_probe(ip, size, timeout_ms, df=df)
+            last = ping_probe(ip, size, timeout_ms, df=df, iface=iface)
             # Definitive answers we don't retry
             if last["ok"] or last["frag_router"]:
                 return last
@@ -477,7 +490,7 @@ def _run_one_target_body(target: str, args) -> tuple[str, list[Hop]]:
     print(f"{C.BOLD}Target:{C.RESET} {C.CYAN}{target}{C.RESET}")
     print(f"{C.BOLD}{'━' * 72}{C.RESET}")
 
-    hops = run_traceroute(target, args.max_hops)
+    hops = run_traceroute(target, args.max_hops, iface=args.iface)
     if not hops:
         print(f"{C.RED}No hops discovered for {target}{C.RESET}")
         return target, []
@@ -494,6 +507,7 @@ def _run_one_target_body(target: str, args) -> tuple[str, list[Hop]]:
         r = probe_hop_dual(
             h.ip, args.start, args.end, args.step, args.timeout_ms, args.retries,
             fine_step=args.fine_step, fine_pivot=args.fine_pivot, prefix=prefix,
+            iface=args.iface,
         )
         h.max_no_frag = r["max_no_frag"]
         h.frag_at = r["frag_at"]
@@ -593,7 +607,7 @@ def main() -> int:
         description=f"Traceroute + per-hop MTU sweep (v{__version__})",
         epilog=f"Author: {__author__}  ·  Repo: {__repo__}",
     )
-    p.add_argument("--version", action="version",
+    p.add_argument("-V", "--version", action="version",
                    version=f"mtu_path_test.py {__version__}")
     p.add_argument("targets", nargs="*",
                    help="One or more destination IPs/hostnames")
@@ -615,6 +629,9 @@ def main() -> int:
                    help="Per-probe wait in ms (auto-converted on Linux) (default 1500)")
     p.add_argument("--retries", type=int, default=2,
                    help="Retries per probe before counting a fail (default 2)")
+    p.add_argument("--iface", default="",
+                   help="Bind ping/traceroute to this interface "
+                        "(Linux: ping -I, macOS: ping -b; traceroute -i on both)")
     p.add_argument("--no-color", action="store_true", help="Disable ANSI colors")
     p.add_argument("--no-save", action="store_true",
                    help="Don't write per-target output to a file")
