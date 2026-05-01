@@ -38,4 +38,17 @@ desktop.ini
 *.local.txt
 scratch/
 
+# --- Go build artifacts ---
+# Compiled binaries from `go build`. Source is main.go / main_test.go.
+mtu_path_test
+mtu_path_test_bin
+mtu_path_test.exe
+mtu_path_test-*
+/dist/
+
+# Go test caches and coverage
+*.test
+coverage.out
+coverage.html
+
 

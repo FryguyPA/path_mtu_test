@@ -4,6 +4,33 @@ All notable changes to this project. Format roughly follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); dates are
 YYYY-MM-DD.
 
+## [0.7.0] — 2026-05-01
+
+### Added
+- **Go port** (`main.go`, `go.mod`, `main_test.go`). Single static binary
+  with no runtime dependencies. Same dual-probe semantics as the other
+  three implementations, same flag names (with both `-flag` and `--flag`
+  accepted), same output layout, same save-to-file behavior.
+  - **Cross-platform build matrix verified**: builds clean for
+    `linux/amd64`, `linux/arm64`, `windows/amd64`, `darwin/amd64`,
+    `darwin/arm64` from any host. ~3.5 MB statically-linked binaries.
+  - **Platform shims** baked in via `runtime.GOOS` — picks the right ping
+    flags (`-D` / `-M do` / `-f`), the right `-W` units (ms vs sec), and
+    the right traceroute hop-cap flag (`-m` vs `-h`).
+  - **`-iface`** accepts either a NIC name (resolved via Go's
+    `net.InterfaceByName`) or a literal IPv4 address; the chosen address
+    flows to `ping -I` / `-S` / `-b` and to `tracert -S` per platform.
+  - **22 Go unit tests** (`go test ./...`) covering `buildSizes`,
+    `parseFragNeeded` for all three ping flavors, `successPattern`,
+    `bar`, `sanitizeTarget`, `stripANSI`, and traceroute parsing for
+    macOS+Linux and Windows formats.
+- **CI matrix extended**: added a `go` job (Go 1.21 / 1.22 on
+  ubuntu-latest, macos-latest, windows-latest running `go vet`,
+  `go test -race`, `go build`) plus a `go-cross-compile` job that
+  publishes 5 architecture binaries as build artifacts.
+- **`.gitignore`** updated with Go build artifacts (`mtu_path_test`,
+  `*.exe`, `dist/`, `*.test`, `coverage.out`).
+
 ## [0.6.0] — 2026-04-30
 
 ### Added

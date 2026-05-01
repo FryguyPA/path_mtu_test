@@ -14,15 +14,19 @@ Useful for spotting silent jumbo-frame breakage, identifying which hop
 fragments traffic, and verifying that fragmented delivery still works
 end-to-end.
 
-Three implementations ship together — pick whichever fits the host:
+Four implementations ship together — pick whichever fits the host:
 
-- `mtu_path_test.py` — Python 3.9+, primary implementation. Runs anywhere
-  Python 3 + traceroute + ping are available.
+- `mtu_path_test.py` — Python 3.9+. Runs anywhere Python 3 + traceroute +
+  ping are available.
 - `mtu_path_test.sh` — pure bash. Same flags, same output, no Python
-  dependency. Drop it on any macOS or Linux box and go.
+  dependency. Drop it on any macOS or Linux box.
 - `mtu_path_test.ps1` — PowerShell (5.1+ on Windows 10/11/Server, or
-  PowerShell 7+). Same probing semantics adapted to `ping.exe` /
-  `tracert.exe`. Use this on a Windows box without WSL.
+  PowerShell 7+). Adapted to `ping.exe` / `tracert.exe`. Use on Windows
+  without WSL.
+- `main.go` (+ `go.mod`) — Go. Compiles to a single static ~3.5 MB binary
+  with `go build`. Cross-compiles to Linux, macOS, and Windows from any
+  host. Use this when you need to drop the tool onto a locked-down box
+  that has no Python / no bash / no `pwsh`.
 
 ## Requirements
 
@@ -31,6 +35,7 @@ Three implementations ship together — pick whichever fits the host:
 | `mtu_path_test.py` | macOS, Linux | `traceroute`, `ping` | Python 3.9+ |
 | `mtu_path_test.sh` | macOS, Linux | `traceroute`, `ping` | bash 3.2+ |
 | `mtu_path_test.ps1` | Windows 10/11/Server | `tracert.exe`, `ping.exe` (built-in) | PowerShell 5.1+ |
+| `main.go` | macOS, Linux, Windows | `traceroute` / `tracert.exe`, `ping` / `ping.exe` | Go 1.21+ to **build**; binary has no runtime |
 
 The bash and Python implementations auto-detect macOS vs Linux and adapt
 to iputils on the latter (`ping -M do`, `-W` in seconds, etc.). On a fresh
@@ -62,6 +67,20 @@ python3 mtu_path_test.py 8.8.8.8
 .\mtu_path_test.ps1 8.8.8.8 1.1.1.1 www.example.com
 .\mtu_path_test.ps1 -File targets.txt -Start 1300 -End 9000
 .\mtu_path_test.ps1 -Iface "Ethernet" 8.8.8.8       # bind to a NIC by alias
+```
+
+```bash
+# Go — build a single static binary, drop it anywhere
+go build -o mtu_path_test
+./mtu_path_test 8.8.8.8
+
+# Cross-compile from your Mac for a remote Linux box
+GOOS=linux GOARCH=amd64 go build -o mtu_path_test-linux-amd64
+scp mtu_path_test-linux-amd64 user@server:/tmp/
+ssh user@server '/tmp/mtu_path_test-linux-amd64 8.8.8.8'
+
+# Or cross-compile for Windows
+GOOS=windows GOARCH=amd64 go build -o mtu_path_test.exe
 ```
 
 > The PowerShell flag style is `-PascalCase` (e.g. `-Start`, `-FineStep`,
@@ -255,5 +274,8 @@ When more than one target is tested, a final summary table compares them.
 - `mtu_path_test.ps1` — PowerShell 5.1+ port for Windows. Uses `ping.exe`
   and `tracert.exe`; same probing semantics, same output layout, same
   save-to-file behavior. PowerShell-style flags (`-Start`, `-OutDir`, ...).
+- `main.go` (+ `go.mod`, `main_test.go`) — Go port. Builds to a single
+  static binary on macOS / Linux / Windows. Same semantics as the others.
+  Use `go build` to compile, `go test` to run the unit suite (22 tests).
 - `HOWITWORKS.md` — deeper explanation of the probing logic.
 - `CHANGELOG.md` — change history.
